@@ -120,8 +120,13 @@ export class ExecutionData implements INodeType {
 
 					const values = dataToSave.reduce(
 						(acc, { key, value }) => {
-							const valueToSet = value ? value : nodeVersion >= 1.1 ? '' : value;
-							acc[key] = valueToSet;
+							// Custom data is stringly typed. Keep nullish values empty on 1.1+,
+							// and stringify primitives so booleans and zeros reach the metadata
+							// layer as 'true' and '0' instead of being rejected. Non-primitives
+							// (and null on older versions) flow through untouched so the
+							// metadata layer still rejects them.
+							const valueToSet = value ?? (nodeVersion >= 1.1 ? '' : value);
+							acc[key] = typeof valueToSet === 'object' ? valueToSet : String(valueToSet);
 							return acc;
 						},
 						{} as { [key: string]: string },

@@ -574,33 +574,40 @@ export function useWorkflowDocumentNodes(deps: WorkflowDocumentNodesDeps) {
 		invalid: INodeCredentialsDetails;
 		type: string;
 	}) {
-		nodes.value.forEach((node: INodeUi) => {
+		let changedAny = false;
+
+		nodes.value.forEach((node: INodeUi, index: number) => {
 			const nodeCredentials: INodeCredentials | undefined = (node as unknown as INode).credentials;
 			if (!nodeCredentials?.[data.type]) {
 				return;
 			}
 
 			const nodeCredentialDetails: INodeCredentialsDetails | string = nodeCredentials[data.type];
+			let shouldReplace = false;
 
-			if (
-				typeof nodeCredentialDetails === 'string' &&
-				nodeCredentialDetails === data.invalid.name
-			) {
-				(node.credentials as INodeCredentials)[data.type] = data.credentials;
-				return;
+			if (typeof nodeCredentialDetails === 'string') {
+				shouldReplace = nodeCredentialDetails === data.invalid.name;
+			} else if (nodeCredentialDetails.id === null) {
+				shouldReplace = nodeCredentialDetails.name === data.invalid.name;
+			} else {
+				shouldReplace = nodeCredentialDetails.id === data.invalid.id;
 			}
 
-			if (nodeCredentialDetails.id === null) {
-				if (nodeCredentialDetails.name === data.invalid.name) {
-					(node.credentials as INodeCredentials)[data.type] = data.credentials;
-				}
-				return;
-			}
+			if (!shouldReplace) return;
 
-			if (nodeCredentialDetails.id === data.invalid.id) {
-				(node.credentials as INodeCredentials)[data.type] = data.credentials;
-			}
+			// Route the write through the normal node update so the document
+			// syncs and marks itself dirty. A direct mutation here left the
+			// replacement invisible to the saver: the follow-up
+			// `updateNodeProperties` saw no change, so nothing ever saved.
+			const changed = updateNodeAtIndex(index, {
+				credentials: { ...nodeCredentials, [data.type]: data.credentials },
+			});
+			if (changed) changedAny = true;
 		});
+
+		if (changedAny) {
+			void onStateDirty.trigger();
+		}
 	}
 
 	// Assign credential to all nodes that support it but don't have it set
